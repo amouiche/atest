@@ -13,6 +13,7 @@ AM_CFLAGS +=  -Wall -Wno-sign-compare
 
 bin_PROGRAMS = atest
 atest_SOURCES = atest.c \
-                seq.c seq.h
+                seq.c seq.h \
+                alsa.c alsa.h
 
 
