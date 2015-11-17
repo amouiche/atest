@@ -21,6 +21,24 @@ struct alsa_config {
 
 
 
+/*
+ * setup the config according to the default values:
+ * by order:
+ * - check the presence of a file $(pwd)/atest.conf, ~/.atest.conf, /etc/atest.conf
+ * - otherwise use static defaults:
+ *    channels = 2
+ *    rate = 48000
+ *    period = 960  (20ms)
+ *    buffer_period_count = 2
+ *
+ *    linking_capture_playback = 0
+ */
+void alsa_config_init( struct alsa_config *config );
+
+
+
+void alsa_config_dump( struct alsa_config *config );
+
 
 
 /*

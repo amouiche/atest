@@ -5,9 +5,70 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <alsa/asoundlib.h>
+#include <wordexp.h>
 
 #include "log.h"
 #include "alsa.h"
+
+
+static const char *atest_conf_search[] = { "atest.conf", "~/.atest.conf", "/etc/atest.conf", NULL };
+
+
+void alsa_config_init( struct alsa_config *config )
+{
+    const char **atest_conf_ptr;
+    int stop_config_search = 0;
+    /* setup the static defaults */
+    config->channels = 2;
+    config->rate = 48000;
+    config->period = 960;
+    config->buffer_period_count = 2;
+    config->linking_capture_playback = 0;
+
+    /* now scan for a config file */
+    atest_conf_ptr = atest_conf_search;
+    while (*atest_conf_ptr && !stop_config_search) {
+        wordexp_t exp_result;
+        if (!wordexp(*atest_conf_ptr, &exp_result, WRDE_NOCMD) && (exp_result.we_wordc==1)) {
+            FILE *F = fopen( exp_result.we_wordv[0], "r" );
+            if (F) {
+                char line[128];
+                dbg("alsa_config_init: using %s", exp_result.we_wordv[0]);
+
+                while (fgets( line, sizeof(line), F) != NULL) {
+                    int v;
+                    if (sscanf(line, "channels=%d", &v)==1)
+                        config->channels = v;
+                    else if (sscanf(line, "rate=%d", &v)==1)
+                        config->rate = v;
+                    else if (sscanf(line, "period=%d", &v)==1)
+                        config->period = v;
+                    else if (sscanf(line, "buffer_period_count=%d", &v)==1)
+                        config->buffer_period_count = v;
+                    else if (sscanf(line, "linking_capture_playback=%d", &v)==1)
+                        config->linking_capture_playback = v;
+                }
+                fclose(F);
+                stop_config_search = 1;
+            }
+        }
+        wordfree( &exp_result );
+        atest_conf_ptr++;
+    }
+}
+
+
+
+void alsa_config_dump( struct alsa_config *config ) {
+    dbg("config:");
+    dbg("  channels=%u", config->channels);
+    dbg("  rate=%u", config->rate);
+    dbg("  period=%u", config->period);
+    dbg("  buffer_period_count=%u", config->buffer_period_count);
+    dbg("  linking_capture_playback=%u", config->linking_capture_playback);
+}
+
+
 
 
 
