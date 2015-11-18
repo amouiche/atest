@@ -14,25 +14,38 @@
 static const char *atest_conf_search[] = { "atest.conf", "~/.atest.conf", "/etc/atest.conf", NULL };
 
 
-void alsa_config_init( struct alsa_config *config )
+void alsa_config_init( struct alsa_config *config, const char *config_path )
 {
     const char **atest_conf_ptr;
     int stop_config_search = 0;
+    const char *atest_conf_search_unique[2] = {NULL, NULL};
+
+
     /* setup the static defaults */
     config->channels = 2;
     config->rate = 48000;
     config->period = 960;
     config->buffer_period_count = 2;
     config->linking_capture_playback = 0;
+    config->format = SND_PCM_FORMAT_S16_LE; // only supported format for the moment
+    config->device[0] = '\0';
+    config->priority[0] = '\0';
 
     /* now scan for a config file */
-    atest_conf_ptr = atest_conf_search;
+    if (config_path) {
+        /* only parse this config file */
+        atest_conf_search_unique[0] = config_path;
+        atest_conf_ptr = atest_conf_search_unique;
+    } else {
+        atest_conf_ptr = atest_conf_search;
+    }
     while (*atest_conf_ptr && !stop_config_search) {
         wordexp_t exp_result;
         if (!wordexp(*atest_conf_ptr, &exp_result, WRDE_NOCMD) && (exp_result.we_wordc==1)) {
             FILE *F = fopen( exp_result.we_wordv[0], "r" );
             if (F) {
                 char line[128];
+                char priority[32];
                 dbg("alsa_config_init: using %s", exp_result.we_wordv[0]);
 
                 while (fgets( line, sizeof(line), F) != NULL) {
@@ -47,6 +60,8 @@ void alsa_config_init( struct alsa_config *config )
                         config->buffer_period_count = v;
                     else if (sscanf(line, "linking_capture_playback=%d", &v)==1)
                         config->linking_capture_playback = v;
+                    else if (sscanf(line, "priority=%32s", priority)==1)
+                        strcpy( config->priority, priority );
                 }
                 fclose(F);
                 stop_config_search = 1;

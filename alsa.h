@@ -4,18 +4,33 @@
 #define __alsa_h__
 
 
+#include <alsa/asoundlib.h>
 
 
 struct alsa_config {
 
+    char device[64];
+
     unsigned int channels;
     unsigned int rate;
+    snd_pcm_format_t format;
 
     unsigned int period;
     unsigned int buffer_period_count;
 
     /* set to 1 to open the capture and playback in linked mode */
     unsigned linking_capture_playback;
+
+
+    /*
+     * scheduler priority to use
+     * fifo,N  => SCHED_FIFO, priority N
+     * rr,N    => SCHED_RR, priority N
+     * other,N => SCHED_OTHER, priority N
+     *
+     * *empty* => no change of the scheduling priority
+     */
+    char priority[32];
 
 };
 
@@ -24,16 +39,19 @@ struct alsa_config {
 /*
  * setup the config according to the default values:
  * by order:
- * - check the presence of a file $(pwd)/atest.conf, ~/.atest.conf, /etc/atest.conf
+ * - check the presence of a file $(pwd)/atest.conf, ~/.atest.conf, /etc/atest.conf (if config_path is not provided)
  * - otherwise use static defaults:
  *    channels = 2
  *    rate = 48000
  *    period = 960  (20ms)
  *    buffer_period_count = 2
+ *    format = S16_LE
  *
  *    linking_capture_playback = 0
+ *
+ *
  */
-void alsa_config_init( struct alsa_config *config );
+void alsa_config_init( struct alsa_config *config, const char *config_path );
 
 
 
