@@ -46,6 +46,7 @@ void alsa_config_init( struct alsa_config *config, const char *config_path )
             if (F) {
                 char line[128];
                 char priority[32];
+                char device[64];
                 dbg("alsa_config_init: using %s", exp_result.we_wordv[0]);
 
                 while (fgets( line, sizeof(line), F) != NULL) {
@@ -62,6 +63,8 @@ void alsa_config_init( struct alsa_config *config, const char *config_path )
                         config->linking_capture_playback = v;
                     else if (sscanf(line, "priority=%32s", priority)==1)
                         strcpy( config->priority, priority );
+                    else if (sscanf(line, "device=%64s", device)==1)
+                        strcpy( config->device, device );
                 }
                 fclose(F);
                 stop_config_search = 1;
