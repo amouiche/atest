@@ -73,8 +73,7 @@ static void capture_timer( struct ev_loop *loop, struct ev_timer *w, int revents
     case CT_W4_RESTART: {
         int r;
         warn("%s: CT_W4_RESTART", tp->t.device);
-        /* simply fill a first period */
-        seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
+        seq_check_jump_notify( &tp->seq );
         snd_pcm_prepare(tp->pcm);
         r = snd_pcm_start( tp->pcm );
         if (r >= 0) {
@@ -117,7 +116,7 @@ static void capture_io_job( struct ev_loop *loop, struct ev_io *w, int revents )
             ev_unloop(loop, EVUNLOOP_ALL);
             return;
         }
-        seq_check_xrun_notify( &tp->seq );
+        seq_check_jump_notify( &tp->seq );
 
     } else if (frames != tp->t.config.period) {
         err("%s: capture read less than the expected period size: %ld / %u", tp->t.device, frames, tp->t.config.period);

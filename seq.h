@@ -15,6 +15,9 @@
 /* total number of sequence errors detected among every sequence checkers */
 extern unsigned seq_errors_total;
 
+/* if not NULL, called when a new error is detected */
+extern void (*seq_error_notify)(void);
+
 enum seq_stat_e {
     NULL_FRAME = 0,
     INVALID_FRAME,
@@ -67,12 +70,12 @@ void seq_fill_frames( struct seq_info *seq, void *buff, int frame_count );
 int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count );
 
 /*
- * when a xrun is detected, we are sure to have a sequence number jump
+ * when a xrun or a stream start/stop is detected, we are sure to have a sequence number jump
  * and it should not be consider as an error.
  *
- * use seq_check_xrun_notify() to inform the seq checkers.
+ * use seq_check_jump_notify() to inform the seq checkers.
  */
-void seq_check_xrun_notify( struct seq_info *seq );
+void seq_check_jump_notify( struct seq_info *seq );
 
 
 #endif //__seq_h__

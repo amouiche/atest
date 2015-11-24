@@ -16,6 +16,7 @@
 #include "log.h"
 
 unsigned seq_errors_total = 0;
+void (*seq_error_notify)(void) = NULL;
 
 void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format )
 {
@@ -81,7 +82,7 @@ static void log_frame( enum log_level level, struct seq_info *seq, const void *f
 }
 
 
-void seq_check_xrun_notify( struct seq_info *seq ) {
+void seq_check_jump_notify( struct seq_info *seq ) {
     seq->state = NULL_FRAME;
     seq->frame_num = 0;
 }
@@ -180,7 +181,7 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                     if (seq->frame_num > 0)
                         warn("Valid frame after %u null frames", seq->frame_num);
                     else
-                        warn("Valid frame");
+                        warn("First valid frame");
                 } else {
                     warn("Valid frame after %u invalid frames", seq->frame_num);
                 }
@@ -193,5 +194,6 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
         }
         s16 += seq->channels;
     }
+    if (errors && seq_error_notify) seq_error_notify();
     return errors;
 }

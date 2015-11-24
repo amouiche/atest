@@ -89,6 +89,11 @@ static void on_duration_timer( struct ev_loop *loop, struct ev_timer *w, int rev
 }
 
 
+static void seq_error_assert(void) {
+    dbg("stop on first error");
+    ev_unloop(loop, EVUNLOOP_ALL);
+}
+
 void usage(void) {
     puts(
         "usage: atest OPTIONS -- TEST [test options] ...\n"
@@ -99,6 +104,7 @@ void usage(void) {
         "-C, --config=FILE       use this particular config file\n"
         "-P, --priority=PRIORITY process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
         "-d, --duration=SECONDS  stop the test after SECONDS\n"
+        "-a, --assert            stop on first error detected\n"
         "\n"
         "TEST\n"
         "  play      continuously generate the sequence steam\n"
@@ -121,6 +127,7 @@ const struct option options[] = {
     { "config", 1, NULL, 'C' },
     { "priority", 1, NULL, 'P' },
     { "duration", 1, NULL, 'd' },
+    { "assert", 0, NULL, 'a' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -131,6 +138,7 @@ int main(int argc, char * const argv[]) {
     int opt_rate = -1;
     int opt_channels = -1;
     int opt_duration = 0;
+    int opt_assert = 0;
     const char *opt_device = NULL;
     const char *opt_config = NULL;
     const char *opt_priority = NULL;
@@ -142,7 +150,7 @@ int main(int argc, char * const argv[]) {
     loop = ev_default_loop(0);
 
     while (1) {
-        if ((result = getopt_long( argc, argv, "r:c:D:C:P:d:", options, &opt_index )) == EOF) break;
+        if ((result = getopt_long( argc, argv, "r:c:D:C:P:d:a", options, &opt_index )) == EOF) break;
         switch (result) {
         case '?':
             usage();
@@ -164,6 +172,9 @@ int main(int argc, char * const argv[]) {
             break;
         case 'P':
             opt_priority = optarg;
+            break;
+        case 'a':
+            opt_assert = 1;
             break;
         }
     }
@@ -320,6 +331,10 @@ int main(int argc, char * const argv[]) {
 
     ev_io_init(&stdin_watcher, on_stdin, 0, EV_READ);
     ev_io_start( loop, &stdin_watcher );
+
+    if (opt_assert) {
+        seq_error_notify = &seq_error_assert;
+    }
 
     if (opt_duration > 0) {
         dbg("start a %d seconds duration timer", opt_duration);
