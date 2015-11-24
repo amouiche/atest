@@ -1,0 +1,33 @@
+
+
+atest is a test software for checking ALSA Asoc drivers concerning 
+the proper frame generation and capture:
+
+On playback side:
+- frames written from userland are correctly generated on PCM bus, 
+  without channel slipping especially when handling more than 2 channels
+- no unexpected samples are introduced
+
+On capture side:
+- recording with good channels order
+- no other samples than silence or the expected samples
+
+
+some scenario:
+	
+1) with a hardware loopback of the PCM bus on alsa device 'foo', testing during 10s
+
+	atest -F foo -r 48000 -c 4 -d 10 -- capture playback 
+	if [ $? -ne 0 ]; then echo "errors"; fi
+	
+
+2) the same, but simulating xruns on playback side
+
+	atest -F foo -r 48000 -c 4 -d 10 -- capture playback -x 1000
+	if [ $? -ne 0 ]; then echo "errors"; fi
+	
+3) Connecting 'foo' alsa device output to the 'bar' alsa input.
+
+	atest -F foo -r 48000 -c 4 -d 10 -- playback -r 1000,500 &
+	atest -F bar -r 48000 -c 4 -d 10 -- capture
+	if [ $? -ne 0 ]; then echo "errors"; fi
