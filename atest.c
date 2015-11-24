@@ -33,6 +33,15 @@ struct test {
     const struct test_ops *ops;
 };
 
+
+
+struct playback_create_opts {
+    int xrun;
+    int restart_play_time;
+    int restart_pause_time;
+};
+
+
 struct test_playback {
     struct test t;
     snd_pcm_t *pcm;
@@ -42,22 +51,28 @@ struct test_playback {
     struct pollfd pollfd;
     struct ev_io io_watcher;
     struct ev_timer timer;
+
+    struct playback_create_opts opts;
+    enum timer_state_e {
+        IDLE = 0,
+        W4_XRUN,
+        W4_XRUN_END,
+
+        W4_STOP,
+        W4_RESTART
+    } timer_state;
 };
 
 
-enum playback_test {
-    PT_CONTINUOUS,
-    PT_PERIODIC,
-    PT_XRUN,
-};
 
 
 
 
 
 
-
-
+/*
+ * feed the PCM with new samples
+ */
 void playback_io_job( struct ev_loop *loop, struct ev_io *w, int revents ) {
 
     struct test_playback *tp = (struct test_playback *)(w->data);
@@ -90,6 +105,58 @@ void playback_io_job( struct ev_loop *loop, struct ev_io *w, int revents ) {
 }
 
 
+void playback_timer( struct ev_loop *loop, struct ev_timer *w, int revents) {
+    struct test_playback *tp = (struct test_playback *)(w->data);
+
+    switch (tp->timer_state) {
+    case IDLE:
+        break;
+    case W4_XRUN:
+        warn("%s: force playback xrun", tp->t.device);
+        /* simply stop handling the pcm handler during few ms */
+        ev_io_stop( loop, &tp->io_watcher );
+        tp->timer_state = W4_XRUN_END;
+        ev_timer_set( &tp->timer, 0.1, 0);
+        ev_timer_start( loop, &tp->timer );
+        break;
+
+    case W4_XRUN_END:
+        warn("%s: W4_XRUN_END", tp->t.device);
+        ev_io_start( loop, &tp->io_watcher );
+        tp->timer_state = W4_XRUN;
+        ev_timer_set( &tp->timer, tp->opts.xrun*1e-3, 0);
+        ev_timer_start( loop, &tp->timer );
+        break;
+
+    case W4_STOP:
+        warn("%s: W4_STOP", tp->t.device);
+        snd_pcm_drop( tp->pcm );
+        ev_io_stop( loop, &tp->io_watcher );
+        tp->timer_state = W4_RESTART;
+        ev_timer_set( &tp->timer, tp->opts.restart_pause_time * 1e-3, 0);
+        ev_timer_start( loop, &tp->timer );
+        break;
+
+    case W4_RESTART: {
+        warn("%s: W4_RESTART", tp->t.device);
+        /* simply fill a first period */
+        seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
+        snd_pcm_prepare(tp->pcm);
+        snd_pcm_sframes_t frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
+        if (frames > 0) {
+            ev_io_start( loop, &tp->io_watcher );
+            tp->timer_state = W4_STOP;
+            ev_timer_set( &tp->timer, tp->opts.restart_play_time * 1e-3, 0);
+            ev_timer_start( loop, &tp->timer );
+        } else {
+            err("%s: playback restart failure (%s)", tp->t.device, snd_strerror(frames));
+            ev_unloop(loop, EVUNLOOP_ALL);
+        }
+    } break;
+    }
+
+}
+
 int playback_start(struct test *t) {
     struct test_playback *tp = (struct test_playback *)t;
     /* simply fill a first period */
@@ -98,6 +165,21 @@ int playback_start(struct test *t) {
 
     if (frames > 0) {
         ev_io_start( loop, &tp->io_watcher );
+        if (tp->opts.xrun) {
+            dbg("%s: will simulate xrun every %d ms", tp->t.device, tp->opts.xrun);
+            tp->timer_state = W4_XRUN;
+            ev_timer_set( &tp->timer, tp->opts.xrun * 1e-3, 0);
+            ev_timer_start( loop, &tp->timer );
+        } else if (tp->opts.restart_play_time && tp->opts.restart_pause_time) {
+            dbg("%s: will stop every %d ms during %d ms", tp->t.device, tp->opts.restart_play_time, tp->opts.restart_pause_time);
+            tp->timer_state = W4_STOP;
+            ev_timer_set( &tp->timer, tp->opts.restart_play_time * 1e-3, 0);
+            ev_timer_start( loop, &tp->timer );
+        }
+
+    } else {
+        err("%s: playback_start failure (%s)", tp->t.device, snd_strerror(frames));
+        ev_unloop(loop, EVUNLOOP_ALL);
     }
 
 
@@ -108,6 +190,7 @@ int playback_close(struct test *t) {
     struct test_playback *tp = (struct test_playback *)t;
 
     ev_io_stop( loop, &tp->io_watcher );
+    ev_timer_stop( loop, &tp->timer );
     snd_pcm_close( tp->pcm );
 
     free( tp->periof_buff );
@@ -122,17 +205,19 @@ const struct test_ops playback_ops = {
         .close = playback_close,
 };
 
+
 /*
  * do a playback test as specified by 'pt'
  * Stop the playback on stdin EPIPE or on signal
  */
-struct test *playback_create(struct alsa_config *config, const char *options) {
+struct test *playback_create(struct alsa_config *config, struct playback_create_opts *opts) {
     struct test_playback *tp = calloc( 1, sizeof(*tp));
     int r;
 
     if (!tp) return NULL;
 
     tp->t.name = "playback";
+    tp->opts = *opts;
     memcpy( &tp->t.config, config, sizeof(*config));
     memcpy( tp->t.device, config->device, sizeof(tp->t.device) );
 
@@ -162,6 +247,8 @@ struct test *playback_create(struct alsa_config *config, const char *options) {
             ((tp->pollfd.events & POLLOUT) ? EV_WRITE : 0)
             );
     tp->io_watcher.data = tp;
+    ev_timer_init( &tp->timer, playback_timer, 0, 0 );
+    tp->timer.data = tp;
 
     tp->t.ops = &playback_ops;
 
@@ -373,7 +460,7 @@ void on_stdin( struct ev_loop *loop, struct ev_io *w, int revents ) {
 
 void usage(void) {
     puts(
-        "usage: atest OPTIONS  TEST\n"
+        "usage: atest OPTIONS -- TEST [test options] ...\n"
         "OPTIONS:\n"
         "-r, --rate=#            sample rate\n"
         "-c, --channels=#        channels\n"
@@ -382,9 +469,9 @@ void usage(void) {
         "-P, --priority=PRIORITY process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
         "\n"
         "TEST\n"
-        "  play[:options]      continuously generate the sequence steam\n"
-        "     options:  xrun=N    generate a xrun every N ms\n"
-        "               restart=N,M     stop after N ms of playback,  and restart after M ms\n"
+        "  play      continuously generate the sequence steam\n"
+        "     options:  -x N    generate a xrun every N ms\n"
+        "               -r N,M    stop after N ms of playback,  and restart after M ms\n"
         "\n"
         "  capture.continous\n"
         "  capture.periodic\n"
@@ -470,7 +557,30 @@ int main(int argc, char * const argv[]) {
     while (argc) {
         struct test *t = NULL;
         if (!strcmp( argv[0], "play" )) {
-            t = playback_create( &config, "" );
+            struct playback_create_opts opts = {0};
+            optind = 1;
+            while (1) {
+                if ((result = getopt( argc, argv, "x:r:" )) == EOF) break;
+                switch (result) {
+                case '?':
+                    printf("invalid option '%s' for test 'play'\n", optarg);
+                    usage();
+                    break;
+                case 'x':
+                    opts.xrun = atoi(optarg);
+                    break;
+                case 'r':
+                    if (sscanf(optarg, "%d,%d", &opts.restart_play_time, &opts.restart_pause_time) != 2) {
+                        printf("invalid value '%s' for test 'play' option '-r'\n", optarg);
+                        usage();
+                    }
+                    dbg("%d,%d", opts.restart_play_time, opts.restart_pause_time);
+                    break;
+                }
+            }
+            argc -= optind-1;
+            argv += optind-1;
+            t = playback_create( &config, &opts );
             if (!t) {
                 err("failed to create a playback test");
                 exit(1);
@@ -542,6 +652,7 @@ int main(int argc, char * const argv[]) {
     }
 
     ev_io_init(&stdin_watcher, on_stdin, 0, EV_READ);
+    ev_io_start( loop, &stdin_watcher );
 
     ev_run( loop, 0 );
 
