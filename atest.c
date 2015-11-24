@@ -83,6 +83,10 @@ static void on_exit_signal(struct ev_loop *loop, ev_signal *w, int revents)
 }
 
 
+static void on_duration_timer( struct ev_loop *loop, struct ev_timer *w, int revents) {
+    dbg("end of tests");
+    ev_unloop(loop, EVUNLOOP_ALL);
+}
 
 
 void usage(void) {
@@ -94,6 +98,7 @@ void usage(void) {
         "-D, --device=NAME       select PCM by name\n"
         "-C, --config=FILE       use this particular config file\n"
         "-P, --priority=PRIORITY process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
+        "-d, --duration=SECONDS  stop the test after SECONDS\n"
         "\n"
         "TEST\n"
         "  play      continuously generate the sequence steam\n"
@@ -115,6 +120,7 @@ const struct option options[] = {
     { "device", 1, NULL, 'D' },
     { "config", 1, NULL, 'C' },
     { "priority", 1, NULL, 'P' },
+    { "duration", 1, NULL, 'd' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -124,16 +130,19 @@ int main(int argc, char * const argv[]) {
     int opt_index;
     int opt_rate = -1;
     int opt_channels = -1;
+    int opt_duration = 0;
     const char *opt_device = NULL;
     const char *opt_config = NULL;
     const char *opt_priority = NULL;
     struct alsa_config config;
+
     struct ev_io stdin_watcher;
+    struct ev_timer duration_timer;
 
     loop = ev_default_loop(0);
 
     while (1) {
-        if ((result = getopt_long( argc, argv, "r:c:D:C:P:", options, &opt_index )) == EOF) break;
+        if ((result = getopt_long( argc, argv, "r:c:D:C:P:d:", options, &opt_index )) == EOF) break;
         switch (result) {
         case '?':
             usage();
@@ -143,6 +152,9 @@ int main(int argc, char * const argv[]) {
             break;
         case 'c':
             opt_channels = atoi(optarg);
+            break;
+        case 'd':
+            opt_duration = atoi(optarg);
             break;
         case 'D':
             opt_device = optarg;
@@ -308,6 +320,12 @@ int main(int argc, char * const argv[]) {
 
     ev_io_init(&stdin_watcher, on_stdin, 0, EV_READ);
     ev_io_start( loop, &stdin_watcher );
+
+    if (opt_duration > 0) {
+        dbg("start a %d seconds duration timer", opt_duration);
+        ev_timer_init( &duration_timer, on_duration_timer, opt_duration, 0 );
+        ev_timer_start( loop, &duration_timer );
+    }
 
     ev_run( loop, 0 );
 
