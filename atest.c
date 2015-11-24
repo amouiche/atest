@@ -6,6 +6,8 @@
 #include <poll.h>
 #include <getopt.h>
 #include <sched.h>
+#include <ev.h>
+
 
 #include "alsa.h"
 #include "log.h"
@@ -13,14 +15,13 @@
 
 
 
-#define MAX_POLLFD_PER_TEST 8
+static struct ev_loop *loop;
 
 
 struct test;
 
 struct test_ops {
     int (*start)(struct test *t);
-    int (*poll_work)(struct test *t);
     int (*close)(struct test *t);
 };
 
@@ -28,9 +29,6 @@ struct test {
     const char *name;
     char device[64];
     struct alsa_config config;
-
-    struct pollfd fds[MAX_POLLFD_PER_TEST];
-    unsigned fds_count;
 
     const struct test_ops *ops;
 };
@@ -40,6 +38,10 @@ struct test_playback {
     snd_pcm_t *pcm;
     struct seq_info seq;
     void *periof_buff;
+
+    struct pollfd pollfd;
+    struct ev_io io_watcher;
+    struct ev_timer timer;
 };
 
 
@@ -54,18 +56,12 @@ enum playback_test {
 
 
 
-int playback_start(struct test *t) {
-    struct test_playback *tp = (struct test_playback *)t;
-    /* simply fill a first period */
-    seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
-    snd_pcm_sframes_t frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
-    return frames > 0 ? 0 : -1;
-}
 
 
-int playback_work(struct test *t) {
+void playback_io_job( struct ev_loop *loop, struct ev_io *w, int revents ) {
 
-    struct test_playback *tp = (struct test_playback *)t;
+    struct test_playback *tp = (struct test_playback *)(w->data);
+
     /* simply fill a first period */
     seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
     snd_pcm_sframes_t frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
@@ -74,7 +70,8 @@ int playback_work(struct test *t) {
         warn("%s: playback write failed: %s", tp->t.device, snd_strerror(frames));
         if (frames == -EBADFD) {
             err("unrecoverable alsa error");
-            return -1;
+            ev_unloop(loop, EVUNLOOP_ALL);
+            return;
         }
         snd_pcm_recover(tp->pcm, frames, 0);
 
@@ -82,20 +79,35 @@ int playback_work(struct test *t) {
         frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
         if (frames < 0) {
             err("%s: playback write failed after recover: %s", tp->t.device, snd_strerror(frames));
-            return -1;
+            ev_unloop(loop, EVUNLOOP_ALL);
+            return;
         }
     } else if (frames != tp->t.config.period) {
         err("%s: playback write less than the expected period size: %ld / %u", tp->t.device, frames, tp->t.config.period);
 
     }
-    return 0;
+    return;
 }
 
 
+int playback_start(struct test *t) {
+    struct test_playback *tp = (struct test_playback *)t;
+    /* simply fill a first period */
+    seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
+    snd_pcm_sframes_t frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
+
+    if (frames > 0) {
+        ev_io_start( loop, &tp->io_watcher );
+    }
+
+
+    return frames > 0 ? 0 : -1;
+}
 
 int playback_close(struct test *t) {
     struct test_playback *tp = (struct test_playback *)t;
 
+    ev_io_stop( loop, &tp->io_watcher );
     snd_pcm_close( tp->pcm );
 
     free( tp->periof_buff );
@@ -107,7 +119,6 @@ int playback_close(struct test *t) {
 
 const struct test_ops playback_ops = {
         .start = playback_start,
-        .poll_work = playback_work,
         .close = playback_close,
 };
 
@@ -115,7 +126,7 @@ const struct test_ops playback_ops = {
  * do a playback test as specified by 'pt'
  * Stop the playback on stdin EPIPE or on signal
  */
-struct test *playback_create(struct alsa_config *config) {
+struct test *playback_create(struct alsa_config *config, const char *options) {
     struct test_playback *tp = calloc( 1, sizeof(*tp));
     int r;
 
@@ -132,13 +143,25 @@ struct test *playback_create(struct alsa_config *config) {
     tp->periof_buff = malloc( snd_pcm_frames_to_bytes( tp->pcm, tp->t.config.period ));
     if (!tp->periof_buff) goto failed;
 
-    r = snd_pcm_poll_descriptors(tp->pcm, tp->t.fds, MAX_POLLFD_PER_TEST);
+    r = snd_pcm_poll_descriptors_count(tp->pcm);
+    if (r != 1) {
+        err("playback_create: expect only 1 fd to monitor (snd_pcm_poll_descriptors_count)");
+        goto failed;
+    }
+
+    r = snd_pcm_poll_descriptors(tp->pcm, &tp->pollfd, 1);
     dbg("snd_pcm_poll_descriptors %d", r);
     if (r < 0) {
         err("%s: snd_pcm_poll_descriptors failed", tp->t.device);
         goto failed;
     }
-    tp->t.fds_count = r;
+
+    ev_io_init( &tp->io_watcher, playback_io_job,
+            tp->pollfd.fd,
+            ((tp->pollfd.events & POLLIN) ? EV_READ : 0) |
+            ((tp->pollfd.events & POLLOUT) ? EV_WRITE : 0)
+            );
+    tp->io_watcher.data = tp;
 
     tp->t.ops = &playback_ops;
 
@@ -151,6 +174,197 @@ failed1:
     free(tp);
     return NULL;
 }
+
+
+
+
+struct test_capture {
+    struct test t;
+    snd_pcm_t *pcm;
+    struct seq_info seq;
+    void *periof_buff;
+
+    struct pollfd pollfd;
+    struct ev_io io_watcher;
+    struct ev_timer timer;
+};
+
+
+enum capture_test {
+    CT_CONTINUOUS,
+    CT_PERIODIC,
+    CST_XRUN,
+};
+
+
+
+
+
+
+int capture_start(struct test *t) {
+    dbg("capture_start");
+    struct test_capture *tp = (struct test_capture *)t;
+    int r = snd_pcm_start( tp->pcm );
+    if (r < 0) {
+        warn("%s: capture start failed: %s", tp->t.device, snd_strerror(r));
+        return -1;
+    } else {
+        ev_io_start( loop, &tp->io_watcher );
+    }
+
+    return 0;
+}
+
+
+void capture_io_job( struct ev_loop *loop, struct ev_io *w, int revents ) {
+
+    struct test_capture *tp = (struct test_capture *)(w->data);
+    snd_pcm_sframes_t frames;
+
+    frames = snd_pcm_readi(tp->pcm, tp->periof_buff, tp->t.config.period);
+    if (frames < 0) {
+        int r;
+        warn("%s: capture read failed: %s", tp->t.device, snd_strerror(frames));
+        if (frames == -EBADFD) {
+            err("unrecoverable alsa error");
+            ev_unloop(loop, EVUNLOOP_ALL);
+            return;
+        }
+        r = snd_pcm_recover(tp->pcm, frames, 0);
+        if (r < 0) {
+            err("%s: capture recover failed: %s", tp->t.device, snd_strerror(frames));
+        }
+        r = snd_pcm_start( tp->pcm );
+        if (r < 0) {
+            warn("%s: capture start failed after recover: %s", tp->t.device, snd_strerror(r));
+            ev_unloop(loop, EVUNLOOP_ALL);
+            return;
+        }
+    } else if (frames != tp->t.config.period) {
+        err("%s: capture read less than the expected period size: %ld / %u", tp->t.device, frames, tp->t.config.period);
+
+    } else {
+        /* check the sequence */
+        int r = seq_check_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
+    }
+}
+
+
+
+int capture_close(struct test *t) {
+    struct test_capture *tp = (struct test_capture *)t;
+
+    ev_io_stop(loop, &tp->io_watcher);
+    snd_pcm_close( tp->pcm );
+
+    free( tp->periof_buff );
+    free( tp );
+    return 0;
+}
+
+
+
+const struct test_ops capture_ops = {
+        .start = capture_start,
+        .close = capture_close,
+};
+
+/*
+ * do a capture test as specified by 'pt'
+ * Stop the capture on stdin EPIPE or on signal
+ */
+struct test *capture_create(struct alsa_config *config) {
+    struct test_capture *tp = calloc( 1, sizeof(*tp));
+    int r;
+
+    if (!tp) return NULL;
+
+    tp->t.name = "capture";
+    memcpy( &tp->t.config, config, sizeof(*config));
+    memcpy( tp->t.device, config->device, sizeof(tp->t.device) );
+
+    r = alsa_device_open( tp->t.config.device, &tp->t.config, &tp->pcm, NULL );
+    if (r) goto failed1;
+
+    seq_init( &tp->seq, tp->t.config.channels, tp->t.config.format );
+    tp->periof_buff = malloc( snd_pcm_frames_to_bytes( tp->pcm, tp->t.config.period ));
+    if (!tp->periof_buff) goto failed;
+
+    r = snd_pcm_poll_descriptors_count(tp->pcm);
+    if (r != 1) {
+        err("capture_create: expect only 1 fd to monitor (snd_pcm_poll_descriptors_count)");
+        goto failed;
+    }
+
+    r = snd_pcm_poll_descriptors(tp->pcm, &tp->pollfd, 1);
+    dbg("snd_pcm_poll_descriptors %d", r);
+    if (r < 0) {
+        err("%s: snd_pcm_poll_descriptors failed", tp->t.device);
+        goto failed;
+    }
+
+    ev_io_init( &tp->io_watcher, capture_io_job,
+            tp->pollfd.fd,
+            ((tp->pollfd.events & POLLIN) ? EV_READ : 0) |
+            ((tp->pollfd.events & POLLOUT) ? EV_WRITE : 0)
+            );
+    tp->io_watcher.data = tp;
+
+    tp->t.ops = &capture_ops;
+
+    return &tp->t;
+
+failed:
+    snd_pcm_close( tp->pcm );
+    free(tp->periof_buff);
+failed1:
+    free(tp);
+    return NULL;
+}
+
+
+
+
+
+/*
+ * something to read from stdin
+ * read one char at a time, even if this is not efficient.
+ */
+void on_stdin( struct ev_loop *loop, struct ev_io *w, int revents ) {
+    static char pipecmd[128] = {0};
+    char c;
+    int r;
+    r = read( 0, &c, 1 );
+    if (r < 0) {
+        /* read failed on stdin. time to exit */
+        ev_unloop( loop, EVUNLOOP_ALL);
+        return;
+    }
+    if (c != '\n') {
+        /* queue into cmdpipe */
+        int l = strlen(pipecmd);
+        if (l < sizeof(pipecmd)-2) {
+            pipecmd[l] = c;
+            pipecmd[l+1] = '\0';
+        }
+    } else {
+        /* execute the command */
+        dbg("pipecmd: '%s'", pipecmd);
+        if (!strcmp(pipecmd, "q")) {
+            warn("quit");
+            ev_unloop( loop, EVUNLOOP_ALL);
+            return;
+        }
+
+
+        /* reset the pipecmd */
+        pipecmd[0] = '\0';
+    }
+
+}
+
+
+
 
 
 
@@ -168,9 +382,9 @@ void usage(void) {
         "-P, --priority=PRIORITY process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
         "\n"
         "TEST\n"
-        "  play.continuous      continuously generate the sequence steam\n"
-        "  play.periodic        generate 1s of stream, then stop 1s\n"
-        "  play.xrun            generate a continuous stream, with xruns every second\n"
+        "  play[:options]      continuously generate the sequence steam\n"
+        "     options:  xrun=N    generate a xrun every N ms\n"
+        "               restart=N,M     stop after N ms of playback,  and restart after M ms\n"
         "\n"
         "  capture.continous\n"
         "  capture.periodic\n"
@@ -202,6 +416,9 @@ int main(int argc, char * const argv[]) {
     const char *opt_config = NULL;
     const char *opt_priority = NULL;
     struct alsa_config config;
+    struct ev_io stdin_watcher;
+
+    loop = ev_default_loop(0);
 
     while (1) {
         if ((result = getopt_long( argc, argv, "r:c:D:C:P:", options, &opt_index )) == EOF) break;
@@ -252,14 +469,20 @@ int main(int argc, char * const argv[]) {
 
     while (argc) {
         struct test *t = NULL;
-        if (!strcmp( argv[0], "play.continuous" )) {
-            t = playback_create( &config );
-            err("playback_create %p", t);
+        if (!strcmp( argv[0], "play" )) {
+            t = playback_create( &config, "" );
             if (!t) {
                 err("failed to create a playback test");
                 exit(1);
             }
+        } else if (!strcmp( argv[0], "capture" )) {
+            t = capture_create( &config );
+            if (!t) {
+                err("failed to create a capture test");
+                exit(1);
+            }
         }
+
         if (t) {
             if (tests_count >= MAX_TESTS) {
                 err("too many tests defined.");
@@ -318,69 +541,14 @@ int main(int argc, char * const argv[]) {
         }
     }
 
+    ev_io_init(&stdin_watcher, on_stdin, 0, EV_READ);
 
-    /* do a basic event loop to what need to be done on time */
-    int abort_loop = 0;
-    while (!abort_loop) {
-        struct pollfd fds[16];
-        int fds_count;
-        /* build the pollfd array */
+    ev_run( loop, 0 );
 
-        fds[0].fd = 0;
-        fds[0].events = POLLIN;
-        fds_count = 1;
-
-        for (i=0; i < tests_count; i++) {
-            struct test *t = tests[i];
-            memcpy( &fds[fds_count], t->fds, t->fds_count * sizeof( struct pollfd ));
-            fds_count += t->fds_count;
-        }
-        dbg("poll fds_count=%d", fds_count);
-        r = poll( fds, fds_count, -1 );
-        if (r < 0) {
-            err("poll failed: %s", strerror(errno));
-
-
-        } else {
-            dbg(".");
-            /* dispatch the received events */
-            if (fds[0].revents) {
-                /* stdin event */
-                char c;
-                r = read( 0, &c, 1 );
-                if (r < 0) {
-                    /* read failed on stdin. time to exit */
-                    abort_loop = 1;
-                    break;
-                }
-            } else {
-                /* go through the tests and check if there is something to do*/
-                int fds_ptr = 1;
-                for (i=0; i < tests_count; i++) {
-                    struct test *t = tests[i];
-                    int j;
-                    int revents = 0;
-                    for (j=0; j < t->fds_count; j++) {
-                        t->fds[j].revents = fds[fds_ptr].revents;
-                        revents |= fds[fds_ptr].revents;
-                        fds_ptr++;
-                    }
-                    if (revents) {
-                        /* something to do for this test */
-                        t->ops->poll_work( t );
-                    }
-                }
-            }
-        }
+    for (i=0; i < tests_count; i++) {
+        struct test *t = tests[i];
+        t->ops->close( t );
     }
-
-
-
-
-
-
-
-
 
     return 0;
 }
