@@ -26,7 +26,7 @@ void seq_fill_frames( struct seq_info *seq, void *buff, int frame_count ) {
         while (frame_count--) {
             int ch;
             for (ch = 0; ch < seq->channels; ch++) {
-                *s16++ = (ch & 15) | ((seq->frame_num << 4) & 0xFFF);
+                *s16++ = (ch & 15) | ((seq->frame_num << 4) & 0xFFF0);
             }
             seq->frame_num++;
         }
@@ -45,7 +45,7 @@ void seq_fill_frames( struct seq_info *seq, void *buff, int frame_count ) {
 static int is_null_frame( const void *frame, int byte_size ) {
     const unsigned char *b = (const unsigned char *)frame;
     while (byte_size-- > 0) {
-        if (*b != 0 || *b != 0xFF) return 0;
+        if ((*b != 0) && (*b != 0xFF)) return 0;
         b++;
     }
     return 1;
@@ -64,6 +64,7 @@ static void log_frame( enum log_level level, struct seq_info *seq, const void *f
     for (ch = 0; ch < seq->channels; ch++) {
         if (pos < sizeof(line)-1)
             pos += snprintf(line + pos, sizeof(line) - pos - 1, "%04x ", (unsigned)(*s16) & 0xFFFF);
+        s16++;
     }
     log( level, "%s", line);
 }
@@ -87,9 +88,9 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
             const int16_t *s = s16;
             /* check samples one by one */
             next_state = VALID_FRAME;
-            current_frame_seq = (*s16 >> 4);
+            current_frame_seq = (*s16 >> 4) & 0xFFF;
             for (ch=0; ch < seq->channels; ch++) {
-                if (((*s & 15) != ch) || (current_frame_seq != (*s >> 4))) {
+                if (((*s & 15) != ch) || (current_frame_seq != ((*s >> 4) & 0xFFF))) {
                     next_state = INVALID_FRAME;
                     break;
                 }
