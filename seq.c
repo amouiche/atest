@@ -101,15 +101,28 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
         if (seq->state == next_state) {
             switch (seq->state) {
             case NULL_FRAME:
+                /* simply increase the record count of those frames */
+                seq->frame_num++;
+                break;
+
             case INVALID_FRAME:
                 /* simply increase the record count of those frames */
                 seq->frame_num++;
+                if ((seq->frame_num == 2) && (seq->prev_state == VALID_FRAME)) {
+                    /* this is the second invalid frame following a valid frame.
+                     * this time this is an error
+                     */
+                    err("second invalid after a valid frame sequence");
+                    log_frame( LOG_ERR, seq, s16 );
+                }
+                seq->error_count++;
                 break;
             case VALID_FRAME:
                 /* check the frame sequence to see if there is no jump */
                 if (seq->frame_num != current_frame_seq) {
                     err("frame 0x%04x received instead of 0x%04x", current_frame_seq, seq->frame_num);
                     errors++;
+                    seq->error_count++;
                 }
                 seq->frame_num = (current_frame_seq + 1) & seq->frame_num_mask;
                 break;
@@ -118,11 +131,17 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
             switch (next_state) {
             case INVALID_FRAME:
                 if (seq->state == VALID_FRAME) {
-                    err("invalid frame while expecting frame 0x%04x", seq->frame_num);
+                    /* this may not be an error if the stream is stopped on remote side
+                     * in this case we should receive only 1 invalid frame followed by some
+                     * null frames
+                     */
+                    warn("first invalid frame while expecting frame 0x%04x", seq->frame_num);
+                    log_frame( LOG_WARN, seq, s16 );
                 } else {
                     err("invalid frame after %u null frames", seq->frame_num);
+                    log_frame( LOG_ERR, seq, s16 );
+                    seq->error_count++;
                 }
-                log_frame( LOG_ERR, seq, s16 );
                 seq->frame_num = 1;
                 break;
 
@@ -145,6 +164,7 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                 seq->frame_num = (current_frame_seq + 1) & seq->frame_num_mask;
                 break;
             }
+            seq->prev_state = seq->state;
             seq->state = next_state;
         }
         s16 += seq->channels;

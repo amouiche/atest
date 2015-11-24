@@ -13,8 +13,10 @@ AM_CFLAGS += -Wall -Wno-sign-compare
 AM_CFLAGS += -Wno-strict-aliasing  # to remove a lot of libev warning concerning strict aliasing
 
 bin_PROGRAMS = atest
-atest_SOURCES = atest.c \
+atest_SOURCES = atest.c test.h \
                 seq.c seq.h \
-                alsa.c alsa.h
+                alsa.c alsa.h \
+                capture.c capture.h \
+                playback.c playback.h
 
 
