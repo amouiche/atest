@@ -15,6 +15,8 @@
 #include "seq.h"
 #include "log.h"
 
+unsigned seq_errors_total = 0;
+
 void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format )
 {
     memset( seq, 0, sizeof(*seq));
@@ -59,7 +61,9 @@ static int is_null_frame( const void *frame, int byte_size ) {
 }
 
 
-
+/*
+ * log the frame content
+ */
 static void log_frame( enum log_level level, struct seq_info *seq, const void *frame ) {
     const int16_t *s16 = (const int16_t *)frame;
     int ch;
@@ -122,7 +126,9 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                     err("second invalid after a valid frame sequence");
                     log_frame( LOG_ERR, seq, s16 );
                 }
+                errors++;
                 seq->error_count++;
+                seq_errors_total++;
                 break;
             case VALID_FRAME:
                 /* check the frame sequence to see if there is no jump */
@@ -130,6 +136,7 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                     err("frame 0x%04x received instead of 0x%04x", current_frame_seq, seq->frame_num);
                     errors++;
                     seq->error_count++;
+                    seq_errors_total++;
                 }
                 seq->frame_num = (current_frame_seq + 1) & seq->frame_num_mask;
                 break;
@@ -147,7 +154,9 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                 } else {
                     err("invalid frame after %u null frames", seq->frame_num);
                     log_frame( LOG_ERR, seq, s16 );
+                    errors++;
                     seq->error_count++;
+                    seq_errors_total++;
                 }
                 seq->frame_num = 1;
                 break;

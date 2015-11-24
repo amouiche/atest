@@ -25,7 +25,6 @@
 
 
 struct ev_loop *loop = NULL;
-unsigned cumul_seq_errors = 0;
 
 
 
@@ -296,7 +295,7 @@ int main(int argc, char * const argv[]) {
         t->ops->close( t );
     }
 
-    printf("cumul_seq_errors: %u\n", cumul_seq_errors);
+    printf("total number of sequence errors: %u\n", seq_errors_total);
     /* exit with a good status only if no error was detected */
-    return cumul_seq_errors ? 2 : 0;
+    return seq_errors_total ? 2 : 0;
 }

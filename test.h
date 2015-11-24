@@ -13,7 +13,6 @@
 #include "alsa.h"
 
 extern struct ev_loop *loop; /* this is the event loop */
-extern unsigned cumul_seq_errors;  /* total number of sequence errors detected */
 
 struct test;
 

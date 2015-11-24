@@ -12,7 +12,8 @@
 #ifndef __seq_h__
 #define __seq_h__
 
-
+/* total number of sequence errors detected among every sequence checkers */
+extern unsigned seq_errors_total;
 
 enum seq_stat_e {
     NULL_FRAME = 0,
