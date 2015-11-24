@@ -51,43 +51,43 @@ static void playback_timer( struct ev_loop *loop, struct ev_timer *w, int revent
     struct test_playback *tp = (struct test_playback *)(w->data);
 
     switch (tp->timer_state) {
-    case IDLE:
+    case PT_IDLE:
         break;
-    case W4_XRUN:
+    case PT_W4_XRUN:
         warn("%s: force playback xrun", tp->t.device);
         /* simply stop handling the pcm handler during few ms */
         ev_io_stop( loop, &tp->io_watcher );
-        tp->timer_state = W4_XRUN_END;
+        tp->timer_state = PT_W4_XRUN_END;
         ev_timer_set( &tp->timer, 0.5, 0);
         ev_timer_start( loop, &tp->timer );
         break;
 
-    case W4_XRUN_END:
-        warn("%s: W4_XRUN_END", tp->t.device);
+    case PT_W4_XRUN_END:
+        warn("%s: PT_W4_XRUN_END", tp->t.device);
         ev_io_start( loop, &tp->io_watcher );
-        tp->timer_state = W4_XRUN;
+        tp->timer_state = PT_W4_XRUN;
         ev_timer_set( &tp->timer, tp->opts.xrun*1e-3, 0);
         ev_timer_start( loop, &tp->timer );
         break;
 
-    case W4_STOP:
-        warn("%s: W4_STOP", tp->t.device);
+    case PT_W4_STOP:
+        warn("%s: PT_W4_STOP", tp->t.device);
         snd_pcm_drop( tp->pcm );
         ev_io_stop( loop, &tp->io_watcher );
-        tp->timer_state = W4_RESTART;
+        tp->timer_state = PT_W4_RESTART;
         ev_timer_set( &tp->timer, tp->opts.restart_pause_time * 1e-3, 0);
         ev_timer_start( loop, &tp->timer );
         break;
 
-    case W4_RESTART: {
-        warn("%s: W4_RESTART", tp->t.device);
+    case PT_W4_RESTART: {
+        warn("%s: PT_W4_RESTART", tp->t.device);
         /* simply fill a first period */
         seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
         snd_pcm_prepare(tp->pcm);
         snd_pcm_sframes_t frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
         if (frames > 0) {
             ev_io_start( loop, &tp->io_watcher );
-            tp->timer_state = W4_STOP;
+            tp->timer_state = PT_W4_STOP;
             ev_timer_set( &tp->timer, tp->opts.restart_play_time * 1e-3, 0);
             ev_timer_start( loop, &tp->timer );
         } else {
@@ -109,12 +109,12 @@ static int playback_start(struct test *t) {
         ev_io_start( loop, &tp->io_watcher );
         if (tp->opts.xrun) {
             dbg("%s: will simulate xrun every %d ms", tp->t.device, tp->opts.xrun);
-            tp->timer_state = W4_XRUN;
+            tp->timer_state = PT_W4_XRUN;
             ev_timer_set( &tp->timer, tp->opts.xrun * 1e-3, 0);
             ev_timer_start( loop, &tp->timer );
         } else if (tp->opts.restart_play_time && tp->opts.restart_pause_time) {
             dbg("%s: will stop every %d ms during %d ms", tp->t.device, tp->opts.restart_play_time, tp->opts.restart_pause_time);
-            tp->timer_state = W4_STOP;
+            tp->timer_state = PT_W4_STOP;
             ev_timer_set( &tp->timer, tp->opts.restart_play_time * 1e-3, 0);
             ev_timer_start( loop, &tp->timer );
         }

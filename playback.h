@@ -35,13 +35,13 @@ struct test_playback {
     struct ev_timer timer;
 
     struct playback_create_opts opts;
-    enum timer_state_e {
-        IDLE = 0,
-        W4_XRUN,
-        W4_XRUN_END,
+    enum playback_timer_state_e {
+        PT_IDLE = 0,
+        PT_W4_XRUN,
+        PT_W4_XRUN_END,
 
-        W4_STOP,
-        W4_RESTART
+        PT_W4_STOP,
+        PT_W4_RESTART
     } timer_state;
 };
 

@@ -66,6 +66,13 @@ void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format 
 void seq_fill_frames( struct seq_info *seq, void *buff, int frame_count );
 int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count );
 
+/*
+ * when a xrun is detected, we are sure to have a sequence number jump
+ * and it should not be consider as an error.
+ *
+ * use seq_check_xrun_notify() to inform the seq checkers.
+ */
+void seq_check_xrun_notify( struct seq_info *seq );
 
 
 #endif //__seq_h__

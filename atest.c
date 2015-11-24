@@ -97,14 +97,12 @@ void usage(void) {
         "\n"
         "TEST\n"
         "  play      continuously generate the sequence steam\n"
-        "     options:  -x N    generate a xrun every N ms\n"
+        "     options:  -x N      simulate a xrun every N ms\n"
         "               -r N,M    stop after N ms of playback,  and restart after M ms\n"
         "\n"
-        "  capture.continous\n"
-        "  capture.periodic\n"
-        "  capture.xrun\n"
-
-        ""
+        "  capture   continuously check the received frame sequence\n"
+        "     options:  -x N      simulate a xrun every N ms\n"
+        "               -r N,M    stop after N ms of playback,  and restart after M ms\n"
         );
     exit(1);
 
@@ -213,7 +211,30 @@ int main(int argc, char * const argv[]) {
                 exit(1);
             }
         } else if (!strcmp( argv[0], "capture" )) {
-            t = capture_create( &config );
+            struct capture_create_opts opts = {0};
+            optind = 1;
+            while (1) {
+                if ((result = getopt( argc, argv, "x:r:" )) == EOF) break;
+                switch (result) {
+                case '?':
+                    printf("invalid option '%s' for test 'capture'\n", optarg);
+                    usage();
+                    break;
+                case 'x':
+                    opts.xrun = atoi(optarg);
+                    break;
+                case 'r':
+                    if (sscanf(optarg, "%d,%d", &opts.restart_play_time, &opts.restart_pause_time) != 2) {
+                        printf("invalid value '%s' for test 'capture' option '-r'\n", optarg);
+                        usage();
+                    }
+                    dbg("%d,%d", opts.restart_play_time, opts.restart_pause_time);
+                    break;
+                }
+            }
+            argc -= optind-1;
+            argv += optind-1;
+            t = capture_create( &config, &opts );
             if (!t) {
                 err("failed to create a capture test");
                 exit(1);

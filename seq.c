@@ -81,6 +81,11 @@ static void log_frame( enum log_level level, struct seq_info *seq, const void *f
 }
 
 
+void seq_check_xrun_notify( struct seq_info *seq ) {
+    seq->state = NULL_FRAME;
+    seq->frame_num = 0;
+}
+
 int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) {
     const int16_t *s16;
     s16 = (const int16_t *)buff;
@@ -172,7 +177,10 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
 
             case VALID_FRAME:
                 if (seq->state == NULL_FRAME) {
-                    warn("Valid frame after %u null frames", seq->frame_num);
+                    if (seq->frame_num > 0)
+                        warn("Valid frame after %u null frames", seq->frame_num);
+                    else
+                        warn("Valid frame");
                 } else {
                     warn("Valid frame after %u invalid frames", seq->frame_num);
                 }
