@@ -18,6 +18,14 @@ extern unsigned seq_errors_total;
 /* if not NULL, called when a new error is detected */
 extern void (*seq_error_notify)(void);
 
+/*
+ * In case there is a serie of consecutives invalid frames,
+ * log the first 'seq_consecutive_invalid_frames_log' frames (default 1)
+ * and stop logging after.
+ */
+extern unsigned seq_consecutive_invalid_frames_log;
+
+
 enum seq_stat_e {
     NULL_FRAME = 0,
     INVALID_FRAME,
@@ -51,7 +59,7 @@ void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format 
 
 /*
  * each sample of the frame sequence #N has the expected value
- * (channel & 15) | (N << 4)
+ * (channel & 15) | (N << 4), with channel starting from zero for the first sample of the frame
  *
  * seq_fill_frames() generates 'frame_count' frames with this expected sequence
  *

@@ -98,13 +98,14 @@ void usage(void) {
     puts(
         "usage: atest OPTIONS -- TEST [test options] ...\n"
         "OPTIONS:\n"
-        "-r, --rate=#            sample rate\n"
-        "-c, --channels=#        channels\n"
-        "-D, --device=NAME       select PCM by name\n"
-        "-C, --config=FILE       use this particular config file\n"
-        "-P, --priority=PRIORITY process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
-        "-d, --duration=SECONDS  stop the test after SECONDS\n"
-        "-a, --assert            stop on first error detected\n"
+        "-r, --rate=#             sample rate\n"
+        "-c, --channels=#         channels\n"
+        "-D, --device=NAME        select PCM by name\n"
+        "-C, --config=FILE        use this particular config file\n"
+        "-P, --priority=PRIORITY  process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
+        "-d, --duration=SECONDS   stop the test after SECONDS\n"
+        "-a, --assert             stop on first error detected\n"
+        "-I, --invalid-log-size=N how many frames are logged on error (default 1)\n"
         "\n"
         "TEST\n"
         "  play      continuously generate the sequence steam\n"
@@ -128,6 +129,7 @@ const struct option options[] = {
     { "priority", 1, NULL, 'P' },
     { "duration", 1, NULL, 'd' },
     { "assert", 0, NULL, 'a' },
+    { "invalid-log-size", 0, NULL, 'I' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -139,6 +141,7 @@ int main(int argc, char * const argv[]) {
     int opt_channels = -1;
     int opt_duration = 0;
     int opt_assert = 0;
+    int opt_invalid_log_size = 0;
     const char *opt_device = NULL;
     const char *opt_config = NULL;
     const char *opt_priority = NULL;
@@ -150,7 +153,7 @@ int main(int argc, char * const argv[]) {
     loop = ev_default_loop(0);
 
     while (1) {
-        if ((result = getopt_long( argc, argv, "r:c:D:C:P:d:a", options, &opt_index )) == EOF) break;
+        if ((result = getopt_long( argc, argv, "+r:c:D:C:P:d:aI:", options, &opt_index )) == EOF) break;
         switch (result) {
         case '?':
             usage();
@@ -175,6 +178,9 @@ int main(int argc, char * const argv[]) {
             break;
         case 'a':
             opt_assert = 1;
+            break;
+        case 'I':
+            opt_invalid_log_size = atoi(optarg);
             break;
         }
     }
@@ -208,7 +214,7 @@ int main(int argc, char * const argv[]) {
             struct playback_create_opts opts = {0};
             optind = 1;
             while (1) {
-                if ((result = getopt( argc, argv, "x:r:" )) == EOF) break;
+                if ((result = getopt( argc, argv, "+x:r:" )) == EOF) break;
                 switch (result) {
                 case '?':
                     printf("invalid option '%s' for test 'play'\n", optarg);
@@ -237,7 +243,7 @@ int main(int argc, char * const argv[]) {
             struct capture_create_opts opts = {0};
             optind = 1;
             while (1) {
-                if ((result = getopt( argc, argv, "x:r:" )) == EOF) break;
+                if ((result = getopt( argc, argv, "+x:r:" )) == EOF) break;
                 switch (result) {
                 case '?':
                     printf("invalid option '%s' for test 'capture'\n", optarg);
@@ -334,6 +340,9 @@ int main(int argc, char * const argv[]) {
 
     if (opt_assert) {
         seq_error_notify = &seq_error_assert;
+    }
+    if (opt_invalid_log_size > 0) {
+        seq_consecutive_invalid_frames_log = opt_invalid_log_size;
     }
 
     if (opt_duration > 0) {

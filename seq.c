@@ -17,6 +17,7 @@
 
 unsigned seq_errors_total = 0;
 void (*seq_error_notify)(void) = NULL;
+unsigned seq_consecutive_invalid_frames_log = 1;
 
 void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format )
 {
@@ -131,6 +132,8 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                      * this time this is an error
                      */
                     err("second invalid after a valid frame sequence");
+                }
+                if (seq->frame_num <= (seq_consecutive_invalid_frames_log+1)) {
                     log_frame( LOG_ERR, seq, s16 );
                 }
                 errors++;
