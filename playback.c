@@ -102,6 +102,7 @@ static void playback_timer( struct ev_loop *loop, struct ev_timer *w, int revent
 static int playback_start(struct test *t) {
     struct test_playback *tp = (struct test_playback *)t;
     /* simply fill a first period */
+    dbg("%s: playback_start", tp->t.device);
     seq_fill_frames( &tp->seq, tp->periof_buff, tp->t.config.period );
     snd_pcm_sframes_t frames = snd_pcm_writei(tp->pcm, tp->periof_buff, tp->t.config.period);
 
@@ -177,7 +178,6 @@ struct test *playback_create(struct alsa_config *config, struct playback_create_
     }
 
     r = snd_pcm_poll_descriptors(tp->pcm, &tp->pollfd, 1);
-    dbg("snd_pcm_poll_descriptors %d", r);
     if (r < 0) {
         err("%s: snd_pcm_poll_descriptors failed", tp->t.device);
         goto failed;

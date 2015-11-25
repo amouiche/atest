@@ -12,9 +12,10 @@
 
 
 static int capture_start(struct test *t) {
-    dbg("capture_start");
     struct test_capture *tp = (struct test_capture *)t;
-    int r = snd_pcm_start( tp->pcm );
+    int r;
+    dbg("%s: capture_start", tp->t.device);
+    r = snd_pcm_start( tp->pcm );
     if (r < 0) {
         warn("%s: capture start failed: %s", tp->t.device, snd_strerror(r));
         return -1;
@@ -176,7 +177,6 @@ struct test *capture_create(struct alsa_config *config, struct capture_create_op
     }
 
     r = snd_pcm_poll_descriptors(tp->pcm, &tp->pollfd, 1);
-    dbg("snd_pcm_poll_descriptors %d", r);
     if (r < 0) {
         err("%s: snd_pcm_poll_descriptors failed", tp->t.device);
         goto failed;
