@@ -18,6 +18,7 @@
 unsigned seq_errors_total = 0;
 void (*seq_error_notify)(void) = NULL;
 unsigned seq_consecutive_invalid_frames_log = 1;
+unsigned seq_max_consecutive_invalid_frames_before_null_warning = 4;
 
 void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format )
 {
@@ -127,18 +128,16 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
             case INVALID_FRAME:
                 /* simply increase the record count of those frames */
                 seq->frame_num++;
-                if ((seq->frame_num == 2) && (seq->prev_state == VALID_FRAME)) {
-                    /* this is the second invalid frame following a valid frame.
-                     * this time this is an error
-                     */
-                    err("second invalid after a valid frame sequence");
+                if ((seq->frame_num <= seq_max_consecutive_invalid_frames_before_null_warning) && (seq->prev_state == VALID_FRAME)) {
+                    log_frame( LOG_WARN, seq, s16 );
+                } else {
+                    if (seq->frame_num <= (seq_consecutive_invalid_frames_log+1)) {
+                        log_frame( LOG_ERR, seq, s16 );
+                    }
+                    errors++;
+                    seq->error_count++;
+                    seq_errors_total++;
                 }
-                if (seq->frame_num <= (seq_consecutive_invalid_frames_log+1)) {
-                    log_frame( LOG_ERR, seq, s16 );
-                }
-                errors++;
-                seq->error_count++;
-                seq_errors_total++;
                 break;
             case VALID_FRAME:
                 /* check the frame sequence to see if there is no jump */
@@ -156,8 +155,8 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
             case INVALID_FRAME:
                 if (seq->state == VALID_FRAME) {
                     /* this may not be an error if the stream is stopped on remote side
-                     * in this case we should receive only 1 invalid frame followed by some
-                     * null frames
+                     * in this case we should receive only a short number of invalid frames
+                     * followed by some null frames
                      */
                     warn("first invalid frame while expecting frame 0x%04x", seq->frame_num);
                     log_frame( LOG_WARN, seq, s16 );
@@ -175,7 +174,14 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                 if (seq->state == VALID_FRAME) {
                     warn("Null frame (%02X) while expecting frame 0x%04x", (*s16 & 0xFF), seq->frame_num);
                 } else {
-                    warn("Null frame (%02X) after %u invalid frames", (*s16 & 0xFF), seq->frame_num);
+                    if (seq->frame_num > seq_max_consecutive_invalid_frames_before_null_warning) {
+                        err("Null frame (%02X) after %u invalid frames", (*s16 & 0xFF), seq->frame_num);
+                        errors++;
+                        seq->error_count++;
+                        seq_errors_total++;
+                    } else {
+                        warn("Null frame (%02X) after %u invalid frames", (*s16 & 0xFF), seq->frame_num);
+                    }
                 }
                 seq->frame_num = 1;
                 break;
