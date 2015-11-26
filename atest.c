@@ -100,6 +100,7 @@ void usage(void) {
         "OPTIONS:\n"
         "-r, --rate=#             sample rate\n"
         "-c, --channels=#         channels\n"
+        "-p, --period=FRAMES      period size in number of frames\n"
         "-D, --device=NAME        select PCM by name\n"
         "-C, --config=FILE        use this particular config file\n"
         "-P, --priority=PRIORITY  process priority to set ('fifo,N' 'rr,N' 'other,N')\n"
@@ -124,6 +125,7 @@ void usage(void) {
 const struct option options[] = {
     { "rate", 1, NULL, 'r' },
     { "channels", 1, NULL, 'c' },
+    { "period", 1, NULL, 'p' },
     { "device", 1, NULL, 'D' },
     { "config", 1, NULL, 'C' },
     { "priority", 1, NULL, 'P' },
@@ -139,6 +141,7 @@ int main(int argc, char * const argv[]) {
     int opt_index;
     int opt_rate = -1;
     int opt_channels = -1;
+    int opt_period = 0;
     int opt_duration = 0;
     int opt_assert = 0;
     int opt_invalid_log_size = 0;
@@ -153,7 +156,7 @@ int main(int argc, char * const argv[]) {
     loop = ev_default_loop(0);
 
     while (1) {
-        if ((result = getopt_long( argc, argv, "+r:c:D:C:P:d:aI:", options, &opt_index )) == EOF) break;
+        if ((result = getopt_long( argc, argv, "+r:c:p:D:C:P:d:aI:", options, &opt_index )) == EOF) break;
         switch (result) {
         case '?':
             usage();
@@ -163,6 +166,9 @@ int main(int argc, char * const argv[]) {
             break;
         case 'c':
             opt_channels = atoi(optarg);
+            break;
+        case 'p':
+            opt_period = atoi(optarg);
             break;
         case 'd':
             opt_duration = atoi(optarg);
@@ -189,6 +195,7 @@ int main(int argc, char * const argv[]) {
     alsa_config_init( &config, opt_config );
     if (opt_rate > 0) config.rate = opt_rate;
     if (opt_channels > 0) config.channels = opt_channels;
+    if (opt_period > 0) config.period = opt_period;
     if (opt_device) { strncpy( config.device, opt_device, sizeof(config.device)-1 ); config.device[ sizeof(config.device)-1 ] = '\0'; }
     if (opt_priority) { strncpy( config.priority, opt_priority, sizeof(config.priority)-1 ); config.priority[ sizeof(config.priority)-1 ] = '\0'; }
 
