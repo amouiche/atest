@@ -47,7 +47,6 @@ struct seq_info {
      *
      */
     unsigned frame_num;
-    unsigned frame_num_mask;
 
     enum seq_stat_e state;
     enum seq_stat_e prev_state;

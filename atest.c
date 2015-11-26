@@ -99,7 +99,7 @@ void usage(void) {
         "usage: atest OPTIONS -- TEST [test options] ...\n"
         "OPTIONS:\n"
         "-r, --rate=#             sample rate\n"
-        "-c, --channels=#         channels\n"
+        "-c, --channels=#         channels (max 32)\n"
         "-p, --period=FRAMES      period size in number of frames\n"
         "-D, --device=NAME        select PCM by name\n"
         "-C, --config=FILE        use this particular config file\n"

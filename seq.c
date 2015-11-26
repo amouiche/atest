@@ -20,12 +20,15 @@ void (*seq_error_notify)(void) = NULL;
 unsigned seq_consecutive_invalid_frames_log = 1;
 unsigned seq_max_consecutive_invalid_frames_before_null_warning = 4;
 
+#define FRAME_NUM_MASK   0x7FF
+#define FRAME_NUM_SHIFT  5
+#define CHANNEL_MASK     0x1F  /* up to 32 channels */
+
 void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format )
 {
     memset( seq, 0, sizeof(*seq));
     seq->channels = channels;
     seq->format = format;
-    seq->frame_num_mask = 0xFFF;
     seq->frame_num = 1; /* start at 1 to avoid sending 0000 as a first sample */
 }
 
@@ -39,7 +42,7 @@ void seq_fill_frames( struct seq_info *seq, void *buff, int frame_count ) {
         while (frame_count--) {
             int ch;
             for (ch = 0; ch < seq->channels; ch++) {
-                *s16++ = (ch & 15) | ((seq->frame_num << 4) & 0xFFF0);
+                *s16++ = (ch & CHANNEL_MASK) | ((seq->frame_num & FRAME_NUM_MASK) << FRAME_NUM_SHIFT);
             }
             seq->frame_num++;
         }
@@ -108,9 +111,9 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
             const int16_t *s = s16;
             /* check samples one by one */
             next_state = VALID_FRAME;
-            current_frame_seq = (*s16 >> 4) & 0xFFF;
+            current_frame_seq = (*s16 >> FRAME_NUM_SHIFT) & FRAME_NUM_MASK;
             for (ch=0; ch < seq->channels; ch++) {
-                if (((*s & 15) != ch) || (current_frame_seq != ((*s >> 4) & 0xFFF))) {
+                if (((*s & CHANNEL_MASK) != ch) || (current_frame_seq != ((*s >> FRAME_NUM_SHIFT) & FRAME_NUM_MASK))) {
                     next_state = INVALID_FRAME;
                     break;
                 }
@@ -147,7 +150,7 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                     seq->error_count++;
                     seq_errors_total++;
                 }
-                seq->frame_num = (current_frame_seq + 1) & seq->frame_num_mask;
+                seq->frame_num = (current_frame_seq + 1) & FRAME_NUM_MASK;
                 break;
             }
         } else {
@@ -196,7 +199,7 @@ int seq_check_frames( struct seq_info *seq, const void *buff, int frame_count ) 
                     warn("Valid frame after %u invalid frames", seq->frame_num);
                 }
                 log_frame( LOG_WARN, seq, s16 );
-                seq->frame_num = (current_frame_seq + 1) & seq->frame_num_mask;
+                seq->frame_num = (current_frame_seq + 1) & FRAME_NUM_MASK;
                 break;
             }
             seq->prev_state = seq->state;
