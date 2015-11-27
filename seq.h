@@ -55,6 +55,7 @@ struct seq_info {
 
 
 void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format );
+void seq_reset( struct seq_info *seq );
 
 /*
  * each sample of the frame sequence #N has the expected value

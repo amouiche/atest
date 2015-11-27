@@ -18,6 +18,8 @@ struct test;
 
 struct test_ops {
     int (*start)(struct test *t);
+
+    /* stop and return the test exit status */
     int (*close)(struct test *t);
 };
 

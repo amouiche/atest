@@ -21,7 +21,7 @@
 #include "test.h"
 #include "playback.h"
 #include "capture.h"
-
+#include "loopback_delay.h"
 
 
 struct ev_loop *loop = NULL;
@@ -116,6 +116,10 @@ void usage(void) {
         "  capture   continuously check the received frame sequence\n"
         "     options:  -x N      simulate a xrun every N ms\n"
         "               -r N,M    stop after N ms of playback,  and restart after M ms\n"
+        "\n"
+        "  loopback_delay   measure the loopback trip time\n"
+        "     options:  -a N      assert that the loopback delay equal N frames\n"
+        "               -s MODE   start mode: (capture)/play/link\n"
         );
     exit(1);
 
@@ -275,6 +279,41 @@ int main(int argc, char * const argv[]) {
                 err("failed to create a capture test");
                 exit(1);
             }
+        } else if (!strcmp( argv[0], "loopback_delay" )) {
+            struct loopback_delay_create_opts opts = {0};
+            optind = 1;
+            while (1) {
+                if ((result = getopt( argc, argv, "+a:s:" )) == EOF) break;
+                switch (result) {
+                case '?':
+                    printf("invalid option '%s' for test 'loopback_delay'\n", optarg);
+                    usage();
+                    break;
+                case 'a':
+                    opts.assert_delay = 1;
+                    opts.expected_delay = atoi(optarg);
+                    break;
+                case 's':
+                    if (!strcmp(optarg, "capture"))
+                        opts.start_sync_mode = LSM_PREPARE_CAPTURE_PLAYBACK;
+                    else if (!strcmp(optarg, "play"))
+                        opts.start_sync_mode = LSM_PREPARE_PLAYBACK_CAPTURE;
+                    else if (!strcmp(optarg, "link"))
+                        opts.start_sync_mode = LSM_LINK;
+                    else {
+                        printf("invalid value '%s' for test 'loopback_delay' option '-s'\n", optarg);
+                        usage();
+                    }
+                    break;
+                }
+            }
+            argc -= optind-1;
+            argv += optind-1;
+            t = loopback_delay_create( &config, &opts );
+            if (!t) {
+                err("failed to create a capture test");
+                exit(1);
+            }
         }
 
         if (t) {
@@ -360,12 +399,17 @@ int main(int argc, char * const argv[]) {
 
     ev_run( loop, 0 );
 
+    int test_exit_status = 0;
     for (i=0; i < tests_count; i++) {
         struct test *t = tests[i];
-        t->ops->close( t );
+        if (t->ops->close( t )) {
+            err("%s exit status: failed", t->name);
+            test_exit_status = 1;
+        }
     }
 
     printf("total number of sequence errors: %u\n", seq_errors_total);
+    printf("global tests exit status: %s\n", test_exit_status ? "FAILED" : "OK");
     /* exit with a good status only if no error was detected */
-    return seq_errors_total ? 2 : 0;
+    return (seq_errors_total || test_exit_status) ? 2 : 0;
 }

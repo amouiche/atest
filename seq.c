@@ -29,7 +29,15 @@ void seq_init( struct seq_info *seq, unsigned channels, snd_pcm_format_t format 
     memset( seq, 0, sizeof(*seq));
     seq->channels = channels;
     seq->format = format;
-    seq->frame_num = 1; /* start at 1 to avoid sending 0000 as a first sample */
+    seq->frame_num = 0;
+}
+
+
+void seq_reset( struct seq_info *seq )
+{
+    seq->frame_num = 0;
+    seq->state = NULL_FRAME;
+    seq->prev_state = NULL_FRAME;
 }
 
 

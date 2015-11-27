@@ -17,6 +17,7 @@ atest_SOURCES = atest.c test.h \
                 seq.c seq.h \
                 alsa.c alsa.h \
                 capture.c capture.h \
-                playback.c playback.h
+                playback.c playback.h \
+                loopback_delay.c loopback_delay.h
 
 
