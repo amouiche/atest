@@ -238,6 +238,8 @@ struct test *loopback_delay_create(struct alsa_config *config, struct loopback_d
     memcpy( &tp->t.config, config, sizeof(*config));
     memcpy( tp->t.device, config->device, sizeof(tp->t.device) );
     tp->opts = *opts;
+    if (opts->start_sync_mode == LSM_LINK)
+        tp->t.config.linking_capture_playback = 1;
 
     r = alsa_device_open( tp->t.config.device, &tp->t.config, &tp->pcm_c, &tp->pcm_p );
     if (r) goto failed1;
