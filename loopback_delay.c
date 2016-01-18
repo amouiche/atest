@@ -304,7 +304,7 @@ struct test *loopback_delay_create(struct alsa_config *config, struct loopback_d
     if (opts->start_sync_mode == LSM_LINK) {
         r = snd_pcm_link( tp->pcm_p, tp->pcm_c );
         if (r) {
-            err("s: snd_pcm_link failed: %s", tp->t.device, snd_strerror(r));
+            err("%s: snd_pcm_link failed: %s", tp->t.device, snd_strerror(r));
             goto failed1;
         }
     }
