@@ -17,17 +17,17 @@ some scenario:
 	
 1) with a hardware loopback of the PCM bus on alsa device 'foo', testing during 10s
 
-	atest -F foo -r 48000 -c 4 -d 10 -- capture play
+	atest -D foo -r 48000 -c 4 -d 10 capture play
 	if [ $? -ne 0 ]; then echo "errors"; fi
 	
 
 2) the same, but simulating xruns on playback side
 
-	atest -F foo -r 48000 -c 4 -d 10 -- capture play -x 1000
+	atest -D foo -r 48000 -c 4 -d 10 capture play -x 1000
 	if [ $? -ne 0 ]; then echo "errors"; fi
 	
 3) Connecting 'foo' alsa device output to the 'bar' alsa input.
 
-	atest -F foo -r 48000 -c 4 -d 10 -- play -r 1000,500 &
-	atest -F bar -r 48000 -c 4 -d 10 -- capture
+	atest -D foo -r 48000 -c 4 -d 10 play -r 1000,500 &
+	atest -D bar -r 48000 -c 4 -d 10 capture
 	if [ $? -ne 0 ]; then echo "errors"; fi
