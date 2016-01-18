@@ -45,6 +45,8 @@ struct loopback_delay_create_opts {
     int assert_delay;
     int expected_delay;
 
+    int xrun; /* if > 0, number of ms between every xrun emulation */
+
 };
 
 
@@ -65,8 +67,17 @@ struct test_loopback_delay {
     struct pollfd pollfd_c;
     struct ev_io io_watcher_p;
     struct ev_io io_watcher_c;
+    struct ev_timer timer;
 
     struct loopback_delay_create_opts opts;
+
+    enum loopback_delay_timer_state_e {
+        LDT_IDLE = 0,
+        LDT_W4_XRUN,
+        LDT_W4_XRUN_END,
+
+    } timer_state;
+
 };
 
 struct test *loopback_delay_create(struct alsa_config *config, struct loopback_delay_create_opts *opts);

@@ -53,8 +53,11 @@ static int loopback_delay_start(struct test *t) {
     {
         /*
          * Start the playback first.
-         * In link case, the capture should also start at once without extra operations.
-         * Otherwise, explicit capture startup is required.
+
+         * This is mandatory in 'link' mode to start the playback first. Because starting
+         * the capture first, (which starts the playback at once), immediatly generated a xrun
+         * on playback side (no period queued)
+         *
          */
         /* playback is start by writing the first period */
         dbg("start playback");
@@ -198,6 +201,59 @@ static void loopback_delay_capture_job( struct ev_loop *loop, struct ev_io *w, i
 }
 
 
+static void loopback_delay_timer( struct ev_loop *loop, struct ev_timer *w, int revents) {
+    struct test_loopback_delay *tp = (struct test_loopback_delay *)(w->data);
+#if 0
+    switch (tp->timer_state) {
+    case CT_IDLE:
+        break;
+    case CT_W4_XRUN:
+        warn("%s: force capture xrun", tp->t.device);
+        /* simply stop handling the pcm handler during few ms */
+        ev_io_stop( loop, &tp->io_watcher );
+        tp->timer_state = CT_W4_XRUN_END;
+        ev_timer_set( &tp->timer, 0.5, 0);
+        ev_timer_start( loop, &tp->timer );
+        break;
+
+    case CT_W4_XRUN_END:
+        warn("%s: CT_W4_XRUN_END", tp->t.device);
+        ev_io_start( loop, &tp->io_watcher );
+        tp->timer_state = CT_W4_XRUN;
+        ev_timer_set( &tp->timer, tp->opts.xrun*1e-3, 0);
+        ev_timer_start( loop, &tp->timer );
+        break;
+
+    case CT_W4_STOP:
+        warn("%s: CT_W4_STOP", tp->t.device);
+        snd_pcm_drop( tp->pcm );
+        ev_io_stop( loop, &tp->io_watcher );
+        tp->timer_state = CT_W4_RESTART;
+        ev_timer_set( &tp->timer, tp->opts.restart_pause_time * 1e-3, 0);
+        ev_timer_start( loop, &tp->timer );
+        break;
+
+    case CT_W4_RESTART: {
+        int r;
+        warn("%s: CT_W4_RESTART", tp->t.device);
+        seq_check_jump_notify( &tp->seq );
+        snd_pcm_prepare(tp->pcm);
+        r = snd_pcm_start( tp->pcm );
+        if (r >= 0) {
+            ev_io_start( loop, &tp->io_watcher );
+            tp->timer_state = CT_W4_STOP;
+            ev_timer_set( &tp->timer, tp->opts.restart_play_time * 1e-3, 0);
+            ev_timer_start( loop, &tp->timer );
+        } else {
+            err("%s: capture restart failure (%s)", tp->t.device, snd_strerror(r));
+            ev_unloop(loop, EVUNLOOP_ALL);
+        }
+    } break;
+    }
+#endif
+}
+
+
 
 static int loopback_delay_close(struct test *t) {
     struct test_loopback_delay *tp = (struct test_loopback_delay *)t;
@@ -238,11 +294,20 @@ struct test *loopback_delay_create(struct alsa_config *config, struct loopback_d
     memcpy( &tp->t.config, config, sizeof(*config));
     memcpy( tp->t.device, config->device, sizeof(tp->t.device) );
     tp->opts = *opts;
-    if (opts->start_sync_mode == LSM_LINK)
-        tp->t.config.linking_capture_playback = 1;
 
-    r = alsa_device_open( tp->t.config.device, &tp->t.config, &tp->pcm_c, &tp->pcm_p );
+    r = alsa_device_open( tp->t.config.device, &tp->t.config, NULL, &tp->pcm_p);
     if (r) goto failed1;
+
+    r = alsa_device_open( tp->t.config.device, &tp->t.config, &tp->pcm_c, NULL);
+    if (r) goto failed1;
+
+    if (opts->start_sync_mode == LSM_LINK) {
+        r = snd_pcm_link( tp->pcm_p, tp->pcm_c );
+        if (r) {
+            err("s: snd_pcm_link failed: %s", tp->t.device, snd_strerror(r));
+            goto failed1;
+        }
+    }
 
     seq_init( &tp->seq_c, tp->t.config.channels, tp->t.config.format );
     seq_init( &tp->seq_p, tp->t.config.channels, tp->t.config.format );
@@ -285,13 +350,16 @@ struct test *loopback_delay_create(struct alsa_config *config, struct loopback_d
             );
     tp->io_watcher_p.data = tp;
 
+    ev_timer_init( &tp->timer, loopback_delay_timer, 0, 0 );
+    tp->timer.data = tp;
+
     tp->t.ops = &loopback_delay_ops;
 
     return &tp->t;
 
 failed:
-    snd_pcm_close( tp->pcm_p );
-    snd_pcm_close( tp->pcm_c );
+    if (tp->pcm_p) snd_pcm_close( tp->pcm_p );
+    if (tp->pcm_c) snd_pcm_close( tp->pcm_c );
     free(tp->periof_buff);
 failed1:
     free(tp);

@@ -283,7 +283,7 @@ int main(int argc, char * const argv[]) {
             struct loopback_delay_create_opts opts = {0};
             optind = 1;
             while (1) {
-                if ((result = getopt( argc, argv, "+a:s:" )) == EOF) break;
+                if ((result = getopt( argc, argv, "+a:s:x:" )) == EOF) break;
                 switch (result) {
                 case '?':
                     printf("invalid option '%s' for test 'loopback_delay'\n", optarg);
