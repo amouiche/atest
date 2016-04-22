@@ -3,9 +3,9 @@ ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS = -include config.h  \
 	@ALSA_CFLAGS@ \
 	@LIBEV_CFLAGS@
-	
-	
-AM_LDFLAGS = \
+
+
+atest_LDADD = \
 	@ALSA_LIBS@ \
 	@LIBEV_LIBS@
 
