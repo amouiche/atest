@@ -3,6 +3,7 @@
 atest is a test software for checking ALSA Asoc drivers concerning 
 the proper frame generation and capture:
 
+
 On playback side:
 - frames written from userland are correctly generated on PCM bus, 
   without channel slipping especially when handling more than 2 channels
@@ -31,3 +32,17 @@ some scenario:
 	atest -D foo -r 48000 -c 4 -d 10 play -r 1000,500 &
 	atest -D bar -r 48000 -c 4 -d 10 capture
 	if [ $? -ne 0 ]; then echo "errors"; fi
+
+building:
+---------
+First, Make sure you have the required tools to do the build:
+
+       sudo apt-get install automake libasound2-dev libev-dev 
+
+Then do:
+
+     . bootstrap
+     ./configure
+     make
+
+And that should give you the atest executable.
