@@ -152,6 +152,7 @@ int main(int argc, char * const argv[]) {
     const char *opt_device = NULL;
     const char *opt_config = NULL;
     const char *opt_priority = NULL;
+    const char *default_dev = "default";
     struct alsa_config config;
 
     struct ev_io stdin_watcher;
@@ -203,11 +204,9 @@ int main(int argc, char * const argv[]) {
     if (opt_device) { strncpy( config.device, opt_device, sizeof(config.device)-1 ); config.device[ sizeof(config.device)-1 ] = '\0'; }
     if (opt_priority) { strncpy( config.priority, opt_priority, sizeof(config.priority)-1 ); config.priority[ sizeof(config.priority)-1 ] = '\0'; }
 
-    /* check if the config is valid */
-    if (config.device[0] == '\0') {
-        printf("Undefined device.\n");
-        exit(1);
-    }
+    /* If no device is passed, use the default one */
+    if (config.device[0] == '\0')
+	strncpy(config.device, default_dev, sizeof(default_dev));
 
     dbg("dev: '%s'", config.device);
 
