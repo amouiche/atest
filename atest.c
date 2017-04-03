@@ -206,7 +206,7 @@ int main(int argc, char * const argv[]) {
 
     /* If no device is passed, use the default one */
     if (config.device[0] == '\0')
-	strncpy(config.device, default_dev, sizeof(default_dev));
+        strncpy(config.device, default_dev, sizeof(config.device));
 
     dbg("dev: '%s'", config.device);
 
