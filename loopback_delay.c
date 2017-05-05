@@ -201,58 +201,6 @@ static void loopback_delay_capture_job( struct ev_loop *loop, struct ev_io *w, i
 }
 
 
-static void loopback_delay_timer( struct ev_loop *loop, struct ev_timer *w, int revents) {
-    struct test_loopback_delay *tp = (struct test_loopback_delay *)(w->data);
-#if 0
-    switch (tp->timer_state) {
-    case CT_IDLE:
-        break;
-    case CT_W4_XRUN:
-        warn("%s: force capture xrun", tp->t.device);
-        /* simply stop handling the pcm handler during few ms */
-        ev_io_stop( loop, &tp->io_watcher );
-        tp->timer_state = CT_W4_XRUN_END;
-        ev_timer_set( &tp->timer, 0.5, 0);
-        ev_timer_start( loop, &tp->timer );
-        break;
-
-    case CT_W4_XRUN_END:
-        warn("%s: CT_W4_XRUN_END", tp->t.device);
-        ev_io_start( loop, &tp->io_watcher );
-        tp->timer_state = CT_W4_XRUN;
-        ev_timer_set( &tp->timer, tp->opts.xrun*1e-3, 0);
-        ev_timer_start( loop, &tp->timer );
-        break;
-
-    case CT_W4_STOP:
-        warn("%s: CT_W4_STOP", tp->t.device);
-        snd_pcm_drop( tp->pcm );
-        ev_io_stop( loop, &tp->io_watcher );
-        tp->timer_state = CT_W4_RESTART;
-        ev_timer_set( &tp->timer, tp->opts.restart_pause_time * 1e-3, 0);
-        ev_timer_start( loop, &tp->timer );
-        break;
-
-    case CT_W4_RESTART: {
-        int r;
-        warn("%s: CT_W4_RESTART", tp->t.device);
-        seq_check_jump_notify( &tp->seq );
-        snd_pcm_prepare(tp->pcm);
-        r = snd_pcm_start( tp->pcm );
-        if (r >= 0) {
-            ev_io_start( loop, &tp->io_watcher );
-            tp->timer_state = CT_W4_STOP;
-            ev_timer_set( &tp->timer, tp->opts.restart_play_time * 1e-3, 0);
-            ev_timer_start( loop, &tp->timer );
-        } else {
-            err("%s: capture restart failure (%s)", tp->t.device, snd_strerror(r));
-            ev_unloop(loop, EVUNLOOP_ALL);
-        }
-    } break;
-    }
-#endif
-}
-
 
 
 static int loopback_delay_close(struct test *t) {
@@ -349,9 +297,6 @@ struct test *loopback_delay_create(struct alsa_config *config, struct loopback_d
             ((tp->pollfd_p.events & POLLOUT) ? EV_WRITE : 0)
             );
     tp->io_watcher_p.data = tp;
-
-    ev_timer_init( &tp->timer, loopback_delay_timer, 0, 0 );
-    tp->timer.data = tp;
 
     tp->t.ops = &loopback_delay_ops;
 
