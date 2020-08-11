@@ -30,7 +30,7 @@ enum seq_stat_e {
     NULL_FRAME = 0,
     INVALID_FRAME,
     VALID_FRAME,
-} state;
+};
 
 
 struct seq_info {
